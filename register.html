@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>お名前登録</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    margin: 0; padding: 24px; background: #f5f5f5;
+  }
+  h1 { font-size: 18px; margin-top: 0; }
+  .card {
+    background: white; border-radius: 8px; padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  label { display: block; font-size: 14px; margin: 12px 0 6px; color: #555; }
+  input[type="text"] {
+    width: 100%; padding: 10px; font-size: 16px;
+    border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;
+  }
+  button {
+    width: 100%; padding: 12px; font-size: 16px; font-weight: bold;
+    background: #1DB446; color: white; border: none; border-radius: 4px;
+    margin-top: 20px; cursor: pointer;
+  }
+  button:disabled { background: #ccc; }
+  .message { margin-top: 16px; font-size: 14px; }
+  .message.error { color: #d32f2f; }
+  .message.success { color: #388e3c; }
+  .note { font-size: 12px; color: #888; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>お名前登録</h1>
+  <p style="font-size:14px;color:#666;">
+    出務交代システムをご利用いただくため、お名前のご登録をお願いします。
+  </p>
+  <label for="real_name">お名前（実名）</label>
+  <input type="text" id="real_name" placeholder="例：山田 太郎">
+  <p class="note">事務局・他の医師にお名前は表示されません。管理者用記録としてのみ使用します。</p>
+  <button id="submit_btn" disabled>登録する</button>
+  <div id="message" class="message"></div>
+</div>
+
+<script>
+// !!! 設定: GASのウェブアプリURLとLIFF IDを実際の値に置き換える !!!
+const GAS_URL = 'https://script.google.com/macros/s/【GAS_DEPLOYMENT_ID】/exec';
+const LIFF_ID = '【REGISTER_LIFF_ID】';
+
+let userProfile = null;
+
+async function init() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    userProfile = await liff.getProfile();
+    document.getElementById('submit_btn').disabled = false;
+  } catch (err) {
+    showMessage('初期化に失敗しました：' + err.message, 'error');
+  }
+}
+
+async function submit() {
+  const realName = document.getElementById('real_name').value.trim();
+  if (!realName) {
+    showMessage('お名前を入力してください', 'error');
+    return;
+  }
+  const btn = document.getElementById('submit_btn');
+  btn.disabled = true;
+  btn.textContent = '登録中...';
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      // GAS は CORS preflight に対応しないため Content-Type を text/plain にする
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        source: 'liff',
+        action: 'register',
+        user_id: userProfile.userId,
+        line_display_name: userProfile.displayName,
+        real_name: realName
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.error || '登録に失敗しました');
+    }
+    showMessage('登録が完了しました。LINEに戻ります...', 'success');
+    setTimeout(() => liff.closeWindow(), 1500);
+  } catch (err) {
+    showMessage('登録に失敗しました：' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '登録する';
+  }
+}
+
+function showMessage(text, type) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = 'message ' + type;
+}
+
+document.getElementById('submit_btn').addEventListener('click', submit);
+init();
+</script>
+</body>
+</html>

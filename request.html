@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>交代を依頼する</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    margin: 0; padding: 24px; background: #f5f5f5;
+  }
+  h1 { font-size: 18px; margin-top: 0; }
+  .card {
+    background: white; border-radius: 8px; padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  label { display: block; font-size: 14px; margin: 12px 0 6px; color: #555; }
+  select, input[type="date"] {
+    width: 100%; padding: 10px; font-size: 16px;
+    border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; background: white;
+  }
+  button {
+    width: 100%; padding: 12px; font-size: 16px; font-weight: bold;
+    background: #1DB446; color: white; border: none; border-radius: 4px;
+    margin-top: 20px; cursor: pointer;
+  }
+  button:disabled { background: #ccc; }
+  .message { margin-top: 16px; font-size: 14px; }
+  .message.error { color: #d32f2f; }
+  .message.success { color: #388e3c; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>交代を依頼する</h1>
+  <label for="clinic_id">診療所</label>
+  <select id="clinic_id">
+    <option value="">選択してください</option>
+  </select>
+  <label for="event_date">出務日</label>
+  <input type="date" id="event_date">
+  <button id="submit_btn" disabled>募集を送信する</button>
+  <div id="message" class="message"></div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/【GAS_DEPLOYMENT_ID】/exec';
+const LIFF_ID = '【REQUEST_LIFF_ID】';
+
+let userProfile = null;
+
+async function init() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    userProfile = await liff.getProfile();
+    await loadClinics();
+    document.getElementById('submit_btn').disabled = false;
+  } catch (err) {
+    showMessage('初期化に失敗しました：' + err.message, 'error');
+  }
+}
+
+async function loadClinics() {
+  const res = await fetch(`${GAS_URL}?action=list_clinics`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+  const select = document.getElementById('clinic_id');
+  data.clinics.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.clinic_id;
+    opt.textContent = c.clinic_name;
+    select.appendChild(opt);
+  });
+}
+
+async function submit() {
+  const clinicId = document.getElementById('clinic_id').value;
+  const eventDate = document.getElementById('event_date').value;
+  if (!clinicId || !eventDate) {
+    showMessage('診療所と日付を選択してください', 'error');
+    return;
+  }
+  const btn = document.getElementById('submit_btn');
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        source: 'liff',
+        action: 'create_request',
+        user_id: userProfile.userId,
+        clinic_id: clinicId,
+        event_date: eventDate
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '送信に失敗しました');
+    showMessage('募集を送信しました', 'success');
+    setTimeout(() => liff.closeWindow(), 1500);
+  } catch (err) {
+    showMessage('送信に失敗しました：' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '募集を送信する';
+  }
+}
+
+function showMessage(text, type) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = 'message ' + type;
+}
+
+document.getElementById('submit_btn').addEventListener('click', submit);
+init();
+</script>
+</body>
+</html>
