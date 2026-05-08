@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>募集中の依頼を見る</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    margin: 0; padding: 24px; background: #f5f5f5;
+  }
+  h1 { font-size: 18px; margin-top: 0; }
+  .card {
+    background: white; border-radius: 8px; padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  .request-item {
+    border: 1px solid #ddd; border-radius: 6px; padding: 14px;
+    margin-bottom: 10px; background: white;
+  }
+  .request-item.is-own {
+    background: #f8f8f8; border-color: #ccc;
+  }
+  .request-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .request-info { flex: 1; }
+  .clinic-name { font-weight: bold; font-size: 16px; }
+  .event-date { font-size: 14px; color: #666; margin-top: 4px; }
+  .own-badge {
+    background: #888; color: white; padding: 2px 8px;
+    border-radius: 4px; font-size: 12px; white-space: nowrap;
+    margin-left: 8px;
+  }
+  .respond-btn {
+    width: 100%; padding: 10px; font-size: 14px; font-weight: bold;
+    background: #1DB446; color: white; border: none; border-radius: 4px;
+    cursor: pointer;
+  }
+  .respond-btn:disabled {
+    background: #ccc; cursor: not-allowed;
+  }
+  .respond-btn.own-disabled {
+    background: #e0e0e0; color: #888;
+  }
+  .empty {
+    color: #888; text-align: center; padding: 40px 0;
+    font-size: 14px;
+  }
+  .message { margin-top: 16px; font-size: 14px; }
+  .message.error { color: #d32f2f; }
+  .message.success { color: #388e3c; }
+
+  /* ローディング画面 */
+  .loading-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.9); z-index: 9999;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 4px solid #e0e0e0; border-top: 4px solid #1DB446;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  .loading-text { margin-top: 16px; font-size: 14px; color: #555; }
+  .loading-subtext { margin-top: 4px; font-size: 12px; color: #999; }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading_text">準備中です...</div>
+  <div class="loading-subtext" id="loading_subtext">少々お待ちください</div>
+</div>
+
+<div class="card">
+  <h1>募集中の依頼</h1>
+  <p style="font-size:13px;color:#666;margin-bottom:16px;">
+    現在募集中の出務交代依頼です。代われるものがあれば「出務を代わる」をタップしてください。
+  </p>
+  <div id="list"></div>
+  <div id="message" class="message"></div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/【GAS_DEPLOYMENT_ID】/exec';
+const LIFF_ID = '【ACTIVE_LIFF_ID】';
+
+let userProfile = null;
+
+function showLoading(text, subtext) {
+  const overlay = document.getElementById('loading');
+  const textEl = document.getElementById('loading_text');
+  const subtextEl = document.getElementById('loading_subtext');
+  if (text) textEl.textContent = text;
+  if (subtext !== undefined) subtextEl.textContent = subtext;
+  overlay.classList.remove('hidden');
+}
+
+function hideLoading() {
+  document.getElementById('loading').classList.add('hidden');
+}
+
+async function init() {
+  try {
+    showLoading('LINEに接続中...', '');
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    showLoading('プロフィール取得中...', '');
+    userProfile = await liff.getProfile();
+
+    showLoading('募集中の依頼を取得中...', '初回は数秒かかります');
+    await loadRequests();
+
+    hideLoading();
+  } catch (err) {
+    hideLoading();
+    showMessage('読み込みに失敗しました:' + err.message, 'error');
+  }
+}
+
+async function loadRequests() {
+  const res = await fetch(`${GAS_URL}?action=list_active_requests&user_id=${encodeURIComponent(userProfile.userId)}`);
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+
+  if (data.requests.length === 0) {
+    list.innerHTML = '<div class="empty">現在、募集中の依頼はありません</div>';
+    return;
+  }
+
+  data.requests.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'request-item' + (r.is_own ? ' is-own' : '');
+    item.innerHTML = `
+      <div class="request-header">
+        <div class="request-info">
+          <div class="clinic-name">${escapeHtml(r.clinic_name)}</div>
+          <div class="event-date">${escapeHtml(r.event_date)}</div>
+        </div>
+        ${r.is_own ? '<span class="own-badge">あなたの依頼</span>' : ''}
+      </div>
+      ${r.is_own
+        ? '<button class="respond-btn own-disabled" disabled>ご自身の依頼です</button>'
+        : `<button class="respond-btn" data-request-id="${escapeHtml(r.request_id)}">出務を代わる</button>`
+      }
+    `;
+    list.appendChild(item);
+  });
+
+  // 応募ボタンのイベントリスナー設定
+  document.querySelectorAll('.respond-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => respond(btn.dataset.requestId, btn));
+  });
+}
+
+async function respond(requestId, btnEl) {
+  if (!confirm('この出務を代わりますか?\n確定すると元に戻せません(取り下げは可能です)。')) {
+    return;
+  }
+
+  // ボタン押下中は全ボタンを無効化(連打・他項目への誤タップ防止)
+  document.querySelectorAll('.respond-btn').forEach(b => b.disabled = true);
+  btnEl.textContent = '処理中...';
+  showLoading('応募を送信中です...', '配信処理に少し時間がかかります');
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        source: 'liff',
+        action: 'respond_to_request',
+        user_id: userProfile.userId,
+        request_id: requestId
+      })
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (!data.ok) {
+      // GAS側のエラー理由をユーザー向けメッセージに変換
+      let userMessage;
+      switch (data.error) {
+        case 'request_not_found':
+          userMessage = 'この募集は見つかりませんでした。';
+          break;
+        case 'already_closed':
+          userMessage = 'この募集はすでに別の方が引き受けました。';
+          break;
+        case 'self_response':
+          userMessage = 'ご自身の募集には応募できません。';
+          break;
+        default:
+          userMessage = '応募に失敗しました:' + data.error;
+      }
+      showMessage(userMessage, 'error');
+      // 一覧を再取得して最新状態に更新
+      await loadRequests();
+      return;
+    }
+
+    showMessage('応募が確定しました。LINEに戻ります...', 'success');
+    setTimeout(() => liff.closeWindow(), 1500);
+  } catch (err) {
+    hideLoading();
+    showMessage('応募に失敗しました:' + err.message, 'error');
+    await loadRequests();
+  }
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function showMessage(text, type) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = 'message ' + type;
+}
+
+init();
+</script>
+</body>
+</html>
