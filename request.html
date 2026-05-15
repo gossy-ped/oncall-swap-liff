@@ -20,7 +20,13 @@
     width: 100%; padding: 10px; font-size: 16px;
     border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; background: white;
   }
-  select:disabled, input:disabled { background: #f5f5f5; color: #999; }
+  textarea {
+    width: 100%; padding: 10px; font-size: 14px;
+    border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; background: white;
+    font-family: inherit; resize: vertical; min-height: 70px;
+  }
+  select:disabled, input:disabled, textarea:disabled { background: #f5f5f5; color: #999; }
+  .note { font-size: 12px; color: #888; margin-top: 4px; }
   button {
     width: 100%; padding: 12px; font-size: 16px; font-weight: bold;
     background: #1DB446; color: white; border: none; border-radius: 4px;
@@ -73,6 +79,9 @@
   </select>
   <label for="event_date">出務日</label>
   <input type="date" id="event_date" disabled>
+  <label for="notes">備考(任意)</label>
+  <textarea id="notes" disabled placeholder="例:13:00-17:00 / 別館での勤務 など"></textarea>
+  <p class="note">勤務時間や出務先の詳細など、自由に記載できます。「その他」を選択した場合は、出務先も必ず記載してください。</p>
   <button id="submit_btn" disabled>募集を送信する</button>
   <div id="message" class="message"></div>
 </div>
@@ -112,6 +121,7 @@ async function init() {
 
     document.getElementById('clinic_id').disabled = false;
     document.getElementById('event_date').disabled = false;
+    document.getElementById('notes').disabled = false;
     document.getElementById('submit_btn').disabled = false;
     hideLoading();
   } catch (err) {
@@ -137,6 +147,7 @@ async function loadClinics() {
 async function submit() {
   const clinicId = document.getElementById('clinic_id').value;
   const eventDate = document.getElementById('event_date').value;
+  const notes = document.getElementById('notes').value.trim();
   if (!clinicId || !eventDate) {
     showMessage('診療所と日付を選択してください', 'error');
     return;
@@ -155,7 +166,8 @@ async function submit() {
         action: 'create_request',
         user_id: userProfile.userId,
         clinic_id: clinicId,
-        event_date: eventDate
+        event_date: eventDate,
+        notes: notes
       })
     });
     const data = await res.json();

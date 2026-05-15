@@ -29,6 +29,14 @@
   .request-info { flex: 1; }
   .clinic-name { font-weight: bold; font-size: 16px; }
   .event-date { font-size: 14px; color: #666; margin-top: 4px; }
+  .request-notes {
+    font-size: 13px; color: #555; margin-top: 6px;
+    padding-top: 6px; border-top: 1px dashed #ddd;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .request-notes::before {
+    content: '備考: '; color: #888; font-size: 12px;
+  }
   .own-badge {
     background: #888; color: white; padding: 2px 8px;
     border-radius: 4px; font-size: 12px; white-space: nowrap;
@@ -152,6 +160,7 @@ async function loadRequests() {
         <div class="request-info">
           <div class="clinic-name">${escapeHtml(r.clinic_name)}</div>
           <div class="event-date">${escapeHtml(r.event_date)}</div>
+          ${r.notes ? `<div class="request-notes">${escapeHtml(r.notes)}</div>` : ''}
         </div>
         ${r.is_own ? '<span class="own-badge">あなたの依頼</span>' : ''}
       </div>
